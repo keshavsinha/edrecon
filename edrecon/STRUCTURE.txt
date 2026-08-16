@@ -1,0 +1,76 @@
+EDRecon v1.0.0 - Directory Structure
+=====================================
+EDCatalyst | Dr. Keshav Sinha | UPES, Dehradun, India
+
+edrecon/
+│
+├── edrecon.py                      MAIN PROGRAM - run this
+│                                   CLI, phase orchestration, scope enforcement
+│
+├── README.md                       Project overview (shown on GitHub)
+├── MANUAL.md                       Full user manual, 13 sections
+├── COMMANDS.md                     Every command, organised by task
+├── CONTRIBUTING.md                 How others can add to the project
+├── STRUCTURE.txt                   This file
+├── LICENSE                         MIT licence + authorised-use notice
+├── CITATION.cff                    Academic citation metadata
+├── EDRecon_Complete_Documentation.pdf   81-page printable documentation
+│
+├── requirements.txt                Python packages needed
+├── scope.example.yaml              AUTHORISATION TEMPLATE - copy this
+├── .gitignore                      Keeps scan data out of git
+│
+├── core/                           FRAMEWORK - shared machinery
+│   ├── __init__.py
+│   ├── finding.py                  The Finding object (teaching layer schema)
+│   ├── scope_guard.py              Authorisation enforcement - no bypass
+│   ├── knowledge.py                Loads the YAML knowledge base
+│   ├── evidence.py                 Rate limiting + hash-chained evidence log
+│   ├── output.py                   Console and HTML renderers
+│   └── banner.py                   Banner and colour handling
+│
+├── knowledge/                      ALL EXPLANATIONS LIVE HERE
+│   │                               Edit these - no Python needed
+│   ├── dns.yaml                    DNS, SPF, DMARC, WHOIS      (12 findings)
+│   ├── ports.yaml                  Hosts, ports, services       (7 findings)
+│   ├── tls.yaml                    Certificates, TLS config     (9 findings)
+│   └── web.yaml                    HTTP, headers, web surface  (17 findings)
+│
+├── modules/                        SCANNERS
+│   ├── __init__.py
+│   │
+│   ├── passive/                    NO packets reach the target
+│   │   ├── __init__.py
+│   │   ├── dns_recon.py            DNS, SPF, DMARC, AXFR check
+│   │   └── whois_ct.py             WHOIS + certificate transparency
+│   │
+│   ├── system/                     ACTIVE - needs scope file
+│   │   ├── __init__.py
+│   │   ├── port_scan.py            Host discovery, TCP scan, banners
+│   │   └── tls_audit.py            Certificate and TLS audit
+│   │
+│   └── web/                        ACTIVE - needs scope file
+│       ├── __init__.py
+│       ├── http_audit.py           Headers, cookies, forms
+│       └── content_discovery.py    Path discovery with baseline
+│
+├── wordlists/
+│   └── common.txt                  Default content-discovery wordlist
+│
+└── reports/                        OUTPUT (created at runtime, git-ignored)
+    └── .gitkeep                    Scan artefacts appear here
+
+
+WHICH FILE DO I EDIT?
+=====================
+Change an explanation .............. knowledge/*.yaml
+Add a new finding type ............. knowledge/*.yaml
+Add authorised targets ............. your own scope.yaml (copy the example)
+Add a new scanner .................. modules/<passive|system|web>/
+Change console appearance .......... core/output.py
+Change the banner .................. core/banner.py
+
+
+FILE COUNT: 34 files
+LANGUAGE:   Python 3.8+
+LICENCE:    MIT

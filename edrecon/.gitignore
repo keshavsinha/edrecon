@@ -1,0 +1,44 @@
+# --- Virtual environments -------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# --- EDRecon runtime output ----------------------------------------------
+# Scan artefacts contain target details. Never commit them.
+reports/
+*.jsonl
+
+# --- Scope files ----------------------------------------------------------
+# CRITICAL: real scope files contain target IPs, authoriser names and
+# contact emails. Only the example template is tracked.
+scope.yaml
+scope-*.yaml
+*-scope.yaml
+!scope.example.yaml
+
+# --- Wordlists ------------------------------------------------------------
+# Track the bundled one; ignore large third-party lists dropped in here.
+wordlists/*
+!wordlists/common.txt
+
+# --- Editors and OS -------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

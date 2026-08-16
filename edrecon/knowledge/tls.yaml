@@ -1,0 +1,168 @@
+# EDRecon Knowledge Base - TLS and certificates
+
+TLS-001:
+  title: "TLS certificate retrieved"
+  what: >
+    The server presented an X.509 certificate during the handshake,
+    binding a public key to the identity claimed in the subject and
+    subject alternative name fields.
+  why_it_matters: >
+    The certificate is a free intelligence document. SAN entries often
+    list every hostname the server answers for - including internal
+    names, staging environments and sibling domains the operator forgot
+    were on the same certificate. The issuer reveals the CA and whether
+    the deployment is automated.
+  how_detected: >
+    A TLS handshake was initiated and the server's certificate chain read
+    from the ServerHello. No authentication or data exchange followed.
+  how_to_verify: "openssl s_client -connect host:443 -servername host < /dev/null"
+  how_to_fix: >
+    Avoid listing internal hostnames in public certificates; use separate
+    certificates for internal and external names.
+  severity: info
+  references: ["RFC 5280", "RFC 8446"]
+  concept_tags: ["tls-handshake", "x509", "certificate-chain"]
+
+TLS-002:
+  title: "Certificate has expired"
+  what: >
+    The current date is past the notAfter field, so the certificate is
+    no longer valid.
+  why_it_matters: >
+    Clients show interstitial warnings, which trains users to click
+    through security errors - the exact habit that makes real
+    interception attacks succeed later. It also signals unmonitored
+    infrastructure, which correlates with missing patches elsewhere.
+  how_detected: "notAfter field compared against the current UTC date."
+  how_to_verify: "openssl s_client -connect host:443 < /dev/null | openssl x509 -noout -dates"
+  how_to_fix: >
+    Automate renewal (ACME/certbot) and alert on certificates within 30
+    days of expiry.
+  severity: high
+  references: ["RFC 5280", "CWE-298"]
+  concept_tags: ["certificate-validity", "expiry", "user-conditioning"]
+
+TLS-003:
+  title: "Certificate expires soon"
+  what: "The notAfter date is within 30 days."
+  why_it_matters: >
+    A predictable outage. If renewal is manual, this is the window in
+    which it is forgotten.
+  how_detected: "notAfter field compared against current date plus 30 days."
+  how_to_verify: "openssl s_client -connect host:443 < /dev/null | openssl x509 -noout -enddate"
+  how_to_fix: "Automate renewal and monitoring."
+  severity: low
+  references: ["RFC 5280"]
+  concept_tags: ["certificate-validity", "expiry"]
+
+TLS-004:
+  title: "Hostname does not match certificate"
+  what: >
+    The hostname connected to does not appear in the certificate's common
+    name or subject alternative names.
+  why_it_matters: >
+    Certificate validation exists to prove you are talking to the right
+    server. A mismatch breaks that proof - a client that proceeds anyway
+    has encryption without authentication, which stops passive
+    eavesdropping but not an active machine-in-the-middle.
+  how_detected: >
+    The requested hostname was compared against the CN and SAN entries,
+    with wildcard rules applied.
+  how_to_verify: "openssl s_client -connect host:443 -servername host < /dev/null | openssl x509 -noout -text | grep -A1 'Subject Alternative Name'"
+  how_to_fix: >
+    Reissue the certificate including every hostname served, or correct
+    the virtual host configuration so the right certificate is presented.
+  severity: high
+  references: ["RFC 6125", "CWE-297"]
+  concept_tags: ["hostname-verification", "san", "mitm"]
+
+TLS-005:
+  title: "Self-signed certificate"
+  what: >
+    The certificate's issuer equals its subject - it was not signed by
+    an independent certificate authority.
+  why_it_matters: >
+    There is no third party vouching for the identity, so a client cannot
+    distinguish the real server from an impostor presenting a different
+    self-signed certificate. Acceptable on an isolated lab host;
+    unacceptable on anything users reach.
+  how_detected: "Issuer and subject distinguished names compared for equality."
+  how_to_verify: "openssl s_client -connect host:443 < /dev/null | openssl x509 -noout -issuer -subject"
+  how_to_fix: >
+    Use a publicly trusted CA for external services, or an internal PKI
+    whose root is distributed to managed clients.
+  severity: medium
+  references: ["RFC 5280", "CWE-295"]
+  concept_tags: ["certificate-authority", "trust-chain", "self-signed"]
+
+TLS-006:
+  title: "Obsolete TLS protocol version supported"
+  what: >
+    The server negotiated SSLv3, TLS 1.0 or TLS 1.1 - all formally
+    deprecated.
+  why_it_matters: >
+    These versions carry structural weaknesses that cannot be patched
+    away: SSLv3 is broken by POODLE, TLS 1.0 by BEAST and its CBC
+    handling. Supporting them enables downgrade attacks in which an
+    active attacker forces the weakest mutually supported version.
+  how_detected: >
+    Separate handshakes were attempted, each pinned to a specific
+    protocol version, to see which the server accepts.
+  how_to_verify: "openssl s_client -connect host:443 -tls1_1 < /dev/null"
+  how_to_fix: >
+    Disable everything below TLS 1.2 and prefer TLS 1.3. In nginx:
+    ssl_protocols TLSv1.2 TLSv1.3;
+  severity: medium
+  references: ["RFC 8996", "CWE-327"]
+  concept_tags: ["protocol-downgrade", "deprecated-crypto", "poodle-beast"]
+
+TLS-007:
+  title: "Modern TLS supported"
+  what: "The server negotiated TLS 1.2 or TLS 1.3."
+  why_it_matters: >
+    Confirms the baseline is met. TLS 1.3 additionally removes legacy
+    cipher suites, mandates forward secrecy, and encrypts more of the
+    handshake itself.
+  how_detected: "Version-pinned handshake succeeded."
+  how_to_verify: "openssl s_client -connect host:443 -tls1_3 < /dev/null"
+  how_to_fix: "No action required."
+  severity: info
+  references: ["RFC 8446"]
+  concept_tags: ["tls-handshake", "forward-secrecy"]
+
+TLS-008:
+  title: "Weak cipher suite negotiated"
+  what: >
+    The agreed cipher suite uses an algorithm considered weak - such as
+    RC4, 3DES, or a suite offering no forward secrecy.
+  why_it_matters: >
+    Without forward secrecy, an attacker who records traffic today and
+    obtains the server's private key later can decrypt all of it
+    retrospectively. Weak ciphers reduce the work factor of that attack
+    from impractical to merely expensive.
+  how_detected: "The cipher name from the completed handshake was matched against a deny list."
+  how_to_verify: "nmap --script ssl-enum-ciphers -p 443 <target>"
+  how_to_fix: >
+    Restrict to AEAD suites with ECDHE key exchange. Remove RC4, 3DES,
+    export and NULL suites entirely.
+  severity: medium
+  references: ["RFC 7465", "CWE-327"]
+  concept_tags: ["cipher-suites", "forward-secrecy", "retrospective-decryption"]
+
+TLS-009:
+  title: "Certificate SAN entries disclose additional hostnames"
+  what: >
+    The subject alternative name extension lists multiple hostnames
+    covered by this certificate.
+  why_it_matters: >
+    Each additional name is a reconnaissance lead that required no
+    scanning to obtain. Shared certificates across environments often
+    expose internal or pre-production hostnames alongside the public one.
+  how_detected: "SAN extension parsed from the presented certificate."
+  how_to_verify: "openssl s_client -connect host:443 < /dev/null | openssl x509 -noout -text | grep DNS:"
+  how_to_fix: >
+    Issue separate certificates per environment so internal names never
+    appear in a publicly reachable certificate.
+  severity: low
+  references: ["RFC 5280", "CWE-200"]
+  concept_tags: ["san", "information-disclosure", "attack-surface"]
