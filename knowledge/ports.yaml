@@ -1,0 +1,149 @@
+# EDRecon Knowledge Base - hosts, ports and services
+
+HOST-001:
+  title: "Host is responsive"
+  what: >
+    The target responded to a probe, confirming a live system at this
+    address at this moment.
+  why_it_matters: >
+    Liveness is the gate for everything else. Note the reasoning is
+    one-directional: a response proves the host is up, but silence does
+    not prove it is down - it may simply be dropping the probe type you
+    used. Students who forget this write off entire live subnets.
+  how_detected: >
+    A TCP connection attempt to a common port. Unlike ICMP ping, this
+    works through firewalls that drop echo requests but must still permit
+    traffic to published services.
+  how_to_verify: "nmap -sn 192.168.56.101"
+  how_to_fix: >
+    Not a weakness. If the host should not be reachable from this network
+    segment, review firewall and segmentation rules.
+  severity: info
+  references: ["RFC 793"]
+  concept_tags: ["host-discovery", "tcp-handshake", "negative-evidence"]
+
+PORT-001:
+  title: "Open TCP port"
+  what: >
+    A full three-way handshake completed on this port, so a service is
+    listening and accepting connections.
+  why_it_matters: >
+    Every open port is an entry point. The question is never just "what
+    is open" but "why is it reachable from here" - a database port open
+    to the internet is a very different finding from the same port open
+    only on a management VLAN.
+  how_detected: >
+    TCP connect scan: SYN sent, SYN-ACK received, ACK sent, then closed.
+    Because the handshake completes, the connection is logged by the
+    target - this is a noisy scan by design, and that visibility is the
+    honest trade-off for not needing root privileges.
+  how_to_verify: "nmap -sT -p <port> <target>"
+  how_to_fix: >
+    Close unused services, bind them to localhost or a management
+    interface, and enforce host-based firewall rules.
+  severity: info
+  references: ["RFC 793"]
+  concept_tags: ["port-scanning", "tcp-handshake", "attack-surface"]
+
+PORT-002:
+  title: "Service banner captured"
+  what: >
+    The service voluntarily disclosed its identity and often its exact
+    version on connection.
+  why_it_matters: >
+    A version string converts a generic open port into a searchable
+    vulnerability query. This is the pivot from enumeration to
+    exploitation: software name plus version maps directly onto CVE
+    databases and exploit modules. Banners can also be edited by the
+    administrator, so treat them as claims rather than proof.
+  how_detected: >
+    Connected to the port and read the first bytes the service sent
+    without being asked. Many protocols greet the client by design.
+  how_to_verify: "nc -nv <target> <port>   # or: nmap -sV -p <port> <target>"
+  how_to_fix: >
+    Suppress or genericise version strings where the daemon permits.
+    Understand this is cosmetic - patching the actual software is the
+    real fix, since fingerprinting can identify versions without banners.
+  severity: low
+  references: ["CWE-200"]
+  concept_tags: ["banner-grabbing", "service-fingerprinting", "cve-mapping"]
+
+PORT-003:
+  title: "Cleartext protocol exposed"
+  what: >
+    A service was found on a port whose protocol transmits credentials
+    and data without encryption.
+  why_it_matters: >
+    Anyone positioned on the network path - a compromised switch, a rogue
+    access point, an ARP-spoofing host on the same LAN - can read the
+    credentials directly off the wire. No cryptographic attack is needed;
+    the data is simply in plaintext.
+  how_detected: >
+    Port number matched a known cleartext protocol and a connection
+    succeeded.
+  how_to_verify: "Capture the session in Wireshark and follow the TCP stream."
+  how_to_fix: >
+    Replace with the encrypted equivalent: SSH for Telnet, FTPS/SFTP for
+    FTP, IMAPS/POP3S for their plain forms, and disable the legacy
+    listener entirely rather than merely adding the secure one.
+  severity: high
+  references: ["CWE-319"]
+  concept_tags: ["cleartext-protocol", "credential-exposure", "network-sniffing"]
+
+PORT-004:
+  title: "Database port reachable"
+  what: >
+    A port associated with a database engine accepted a connection from
+    the scanning host.
+  why_it_matters: >
+    Databases are meant to be reached by application servers, not by
+    arbitrary hosts. Direct reachability suggests missing segmentation.
+    Many database engines historically shipped with blank or default
+    credentials, making an exposed port a short path to the entire
+    data store.
+  how_detected: "TCP connect succeeded on a well-known database port."
+  how_to_verify: "nmap -sV -p 3306,5432,1433,27017,6379 <target>"
+  how_to_fix: >
+    Bind the listener to localhost or a private interface, require
+    authentication, and restrict access with firewall rules to
+    application hosts only.
+  severity: high
+  references: ["CWE-668", "CWE-1188"]
+  concept_tags: ["network-segmentation", "database-exposure", "default-credentials"]
+
+PORT-005:
+  title: "Remote management port reachable"
+  what: >
+    A port used for remote administration is accepting connections.
+  why_it_matters: >
+    Management interfaces are the highest-value targets on any host:
+    success there means interactive control, not just data access. When
+    exposed broadly they attract continuous credential-stuffing traffic.
+  how_detected: "TCP connect succeeded on a known management port."
+  how_to_verify: "nmap -sV -p 22,23,3389,5900 <target>"
+  how_to_fix: >
+    Restrict to a management network or VPN, enforce key-based or
+    multi-factor authentication, and rate-limit authentication attempts.
+  severity: medium
+  references: ["CWE-284"]
+  concept_tags: ["remote-administration", "access-control", "credential-attacks"]
+
+PORT-006:
+  title: "Filtered or closed port behaviour observed"
+  what: >
+    The port did not complete a handshake. A refusal (RST) means closed;
+    a timeout usually means filtered by a firewall.
+  why_it_matters: >
+    The distinction is diagnostically important. A closed port tells you
+    the host is alive but nothing listens there. A silent drop tells you
+    a filtering device sits in the path - which itself maps the network's
+    defensive posture.
+  how_detected: >
+    Connection attempt returned RST (closed) or timed out (filtered).
+  how_to_verify: "nmap -sT --reason -p <port> <target>"
+  how_to_fix: >
+    Default-deny filtering is correct. Prefer dropping over rejecting for
+    unused ports so that scanners receive no confirmation at all.
+  severity: info
+  references: ["RFC 793"]
+  concept_tags: ["port-states", "firewall-behaviour", "tcp-reset"]

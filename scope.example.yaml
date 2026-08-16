@@ -1,0 +1,66 @@
+# ===========================================================================
+# EDRecon Authorisation Scope File
+# ---------------------------------------------------------------------------
+# This file IS the authorisation record. EDRecon refuses to run any active
+# module against a target not listed here, and there is no override flag.
+#
+# In a real engagement this mirrors the signed rules of engagement.
+# In the classroom it mirrors the lab sheet. Treating it as mandatory is
+# the habit that transfers to professional practice.
+#
+# Copy this file, edit it, and pass it with --scope.
+# ===========================================================================
+
+engagement:
+  # All four fields are required. EDRecon will not start without them.
+  name: "Ethical Hacking Lab - Unit 2 Reconnaissance"
+  authorised_by: "Dr. Keshav Sinha, School of Computer Science, UPES"
+  contact: "keshav.sinha@ddn.upes.ac.in"
+
+  # YYYY-MM-DD. An expired scope is refused, exactly like real authorisation.
+  # Set this to the last day of your lab block.
+  expires: "2026-12-31"
+
+  notes: >
+    Isolated lab environment. Metasploitable 3 target VM on a host-only
+    network. No internet-facing systems are in scope. Students must not
+    modify this file to add targets outside the lab network.
+
+in_scope:
+  # Individual hosts, by IP or hostname.
+  hosts:
+    - "192.168.56.101"      # Metasploitable 3 (Ubuntu)
+    - "192.168.56.102"      # Metasploitable 3 (Windows)
+
+  # Whole networks in CIDR notation. Use this for the lab subnet.
+  networks:
+    - "192.168.56.0/24"     # VirtualBox host-only network
+
+  # Domains. Subdomains are automatically included.
+  domains: []
+    # - "lab.example.local"
+
+# Anything listed here is refused even if it also matches in_scope above.
+# Exclusions always win. Use this to carve out the gateway, the host
+# machine, or any device that must not be touched.
+out_of_scope:
+  - "192.168.56.1"          # VirtualBox host adapter - do not scan
+  - "192.168.56.100"        # Kali attacker VM - that is you
+
+# ===========================================================================
+# TEMPLATE FOR A SCOPE FILE OF YOUR OWN
+# ---------------------------------------------------------------------------
+# engagement:
+#   name: "<what this assessment is>"
+#   authorised_by: "<person who signed off, with role>"
+#   contact: "<their email>"
+#   expires: "<YYYY-MM-DD, the day authorisation lapses>"
+#
+# in_scope:
+#   hosts: ["<ip or hostname>"]
+#   networks: ["<cidr>"]
+#   domains: ["<domain>"]
+#
+# out_of_scope:
+#   - "<anything explicitly forbidden>"
+# ===========================================================================

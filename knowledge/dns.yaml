@@ -1,0 +1,238 @@
+# EDRecon Knowledge Base - DNS and registration
+# Edit these explanations freely; they are decoupled from scanner logic.
+
+DNS-001:
+  title: "A/AAAA records resolved"
+  what: >
+    The domain maps to one or more IP addresses. A records are IPv4,
+    AAAA records are IPv6. This is the address the client actually
+    connects to after resolution.
+  why_it_matters: >
+    This is the first pivot in any assessment. The IP tells you who hosts
+    the target (cloud, on-premise, CDN), which netblock it sits in, and
+    therefore what else the same owner may run nearby. If AAAA exists but
+    firewall rules were only written for IPv4, the IPv6 path is often an
+    unmonitored way in.
+  how_detected: >
+    A recursive DNS query to your configured resolver. No packet was sent
+    to the target itself - the resolver did the work, which is why this
+    counts as passive reconnaissance.
+  how_to_verify: "dig +short A example.com ; dig +short AAAA example.com"
+  how_to_fix: >
+    Not a weakness. If the address should not be public, place the service
+    behind a proxy or CDN so the origin IP is not directly resolvable.
+  severity: info
+  references: ["RFC 1035", "RFC 3596"]
+  concept_tags: ["dns-resolution", "recursive-query", "ipv4-ipv6"]
+
+DNS-002:
+  title: "MX records disclose mail infrastructure"
+  what: >
+    Mail Exchanger records name the hosts that accept email for this
+    domain, with a preference value setting their order.
+  why_it_matters: >
+    MX records reveal whether mail is self-hosted or outsourced. That
+    single fact shapes an entire phishing strategy: a Google Workspace or
+    Microsoft 365 tenant implies a known login page to clone, while a
+    self-hosted server implies a mail daemon you can fingerprint and a
+    possible open relay to test.
+  how_detected: "Recursive DNS query for the MX record type."
+  how_to_verify: "dig +short MX example.com"
+  how_to_fix: >
+    MX records must be public for mail to work. Reduce the value of the
+    disclosure by enforcing SPF, DKIM and DMARC so a spoofed sender is
+    rejected regardless.
+  severity: info
+  references: ["RFC 5321"]
+  concept_tags: ["dns-resolution", "mail-infrastructure", "phishing-surface"]
+
+DNS-003:
+  title: "SPF record present"
+  what: >
+    A TXT record beginning v=spf1 lists which servers are permitted to
+    send mail on behalf of this domain.
+  why_it_matters: >
+    SPF also leaks infrastructure. An include: directive names every
+    third-party service authorised to send as this domain - CRM, ticketing,
+    marketing platforms - each of which is a supply-chain path in. The
+    final mechanism matters too: -all is a hard fail, ~all is a soft fail
+    that many receivers still deliver.
+  how_detected: "TXT record lookup, filtered for the v=spf1 prefix."
+  how_to_verify: "dig +short TXT example.com | grep spf1"
+  how_to_fix: >
+    End the record with -all rather than ~all once you are confident the
+    list is complete. Keep the include: list minimal and audited; the
+    lookup limit is 10 DNS queries.
+  severity: info
+  references: ["RFC 7208"]
+  concept_tags: ["email-authentication", "spf", "supply-chain"]
+
+DNS-004:
+  title: "No SPF record found"
+  what: >
+    The domain publishes no v=spf1 TXT record, so receivers have no
+    authoritative list of permitted senders.
+  why_it_matters: >
+    Without SPF, anyone can send email claiming to be from this domain and
+    receivers have no DNS-based reason to reject it. For a university or
+    enterprise domain this is a direct, low-effort phishing enabler
+    against staff and students.
+  how_detected: "TXT lookup returned no record with the v=spf1 prefix."
+  how_to_verify: "dig +short TXT example.com"
+  how_to_fix: >
+    Publish an SPF record listing legitimate senders, then move to -all
+    after a monitoring period. Pair with DKIM and a DMARC policy.
+  severity: medium
+  references: ["RFC 7208", "CWE-290"]
+  concept_tags: ["email-authentication", "spf", "spoofing"]
+
+DNS-005:
+  title: "DMARC policy published"
+  what: >
+    A TXT record at _dmarc.<domain> tells receivers what to do when SPF
+    and DKIM checks fail, and where to send aggregate reports.
+  why_it_matters: >
+    The p= value is what actually matters. p=none only monitors and blocks
+    nothing, so a domain can appear protected while remaining fully
+    spoofable. p=quarantine or p=reject is where real protection begins.
+  how_detected: "TXT lookup against the _dmarc subdomain."
+  how_to_verify: "dig +short TXT _dmarc.example.com"
+  how_to_fix: >
+    Progress from p=none to p=quarantine to p=reject as report data
+    confirms legitimate senders are aligned.
+  severity: info
+  references: ["RFC 7489"]
+  concept_tags: ["email-authentication", "dmarc", "policy-enforcement"]
+
+DNS-006:
+  title: "No DMARC record found"
+  what: >
+    No policy exists at _dmarc.<domain>, so receivers fall back to their
+    own heuristics when authentication fails.
+  why_it_matters: >
+    SPF and DKIM without DMARC leave a gap: neither covers the From header
+    the user actually sees. DMARC ties authentication to that visible
+    header. Its absence means display-name spoofing has no policy-level
+    defence.
+  how_detected: "TXT lookup against _dmarc returned nothing."
+  how_to_verify: "dig +short TXT _dmarc.example.com"
+  how_to_fix: >
+    Publish a record starting at p=none with rua= reporting, review the
+    reports, then tighten the policy.
+  severity: medium
+  references: ["RFC 7489"]
+  concept_tags: ["email-authentication", "dmarc", "spoofing"]
+
+DNS-007:
+  title: "Nameservers identified"
+  what: >
+    NS records name the authoritative DNS servers for the zone.
+  why_it_matters: >
+    Nameservers identify the DNS provider and are themselves targets. A
+    dangling NS delegation, an expired provider account, or a
+    misconfigured server accepting zone transfers all lead to full control
+    of the domain's resolution.
+  how_detected: "Recursive query for the NS record type."
+  how_to_verify: "dig +short NS example.com"
+  how_to_fix: >
+    Use at least two providers, restrict zone transfers, and audit
+    delegations for nameservers you no longer control.
+  severity: info
+  references: ["RFC 1035"]
+  concept_tags: ["dns-resolution", "authoritative-dns", "delegation"]
+
+DNS-008:
+  title: "Zone transfer (AXFR) permitted"
+  what: >
+    A nameserver returned the full contents of the DNS zone in response
+    to an unauthenticated AXFR request.
+  why_it_matters: >
+    This is the single most valuable DNS misconfiguration. Instead of
+    guessing subdomains one at a time, an attacker receives the complete
+    list - including internal hostnames, staging servers, VPN endpoints
+    and development boxes that were never meant to be discoverable.
+    Reconnaissance that would take hours completes in one query.
+  how_detected: >
+    An AXFR query was sent to each authoritative nameserver. A correctly
+    configured server refuses this from unauthorised clients.
+  how_to_verify: "dig AXFR example.com @ns1.example.com"
+  how_to_fix: >
+    Restrict AXFR to known secondary servers by IP, and prefer TSIG keys
+    for authentication. In BIND, use allow-transfer with an explicit ACL.
+  severity: high
+  references: ["RFC 5936", "CWE-200"]
+  concept_tags: ["zone-transfer", "axfr", "information-disclosure"]
+
+DNS-009:
+  title: "TXT records disclose service verification tokens"
+  what: >
+    TXT records often hold ownership-verification strings for third-party
+    SaaS platforms.
+  why_it_matters: >
+    Each token names a service the organisation uses. Collectively they
+    map the SaaS footprint - which is both a phishing pretext list and a
+    set of accounts whose compromise affects the domain.
+  how_detected: "TXT record lookup, excluding SPF and DMARC entries."
+  how_to_verify: "dig +short TXT example.com"
+  how_to_fix: >
+    Remove verification tokens for services no longer in use; stale
+    tokens can allow domain re-claim on abandoned platforms.
+  severity: low
+  references: ["CWE-200"]
+  concept_tags: ["information-disclosure", "saas-footprint"]
+
+DNS-010:
+  title: "Subdomain discovered"
+  what: >
+    A hostname under the target domain that resolves to an address.
+  why_it_matters: >
+    Subdomains multiply attack surface. Development, staging and legacy
+    hosts are patched less often than the main site and frequently run
+    with debug features enabled. A subdomain pointing at a deprovisioned
+    cloud resource is vulnerable to takeover.
+  how_detected: >
+    Aggregated from certificate transparency logs and DNS resolution.
+    CT logs are public records of every certificate issued, so this is
+    passive - no request reached the target.
+  how_to_verify: "curl -s 'https://crt.sh/?q=%25.example.com&output=json'"
+  how_to_fix: >
+    Maintain a DNS inventory, remove records for decommissioned services
+    immediately, and consider whether internal hostnames need public DNS.
+  severity: info
+  references: ["RFC 6962"]
+  concept_tags: ["subdomain-enumeration", "certificate-transparency", "attack-surface"]
+
+WHO-001:
+  title: "WHOIS registration data retrieved"
+  what: >
+    Registration metadata for the domain: registrar, creation and expiry
+    dates, and contact details where not redacted.
+  why_it_matters: >
+    Creation date distinguishes an established domain from one registered
+    last week for a phishing campaign. Expiry date flags a domain at risk
+    of lapsing and being re-registered by someone else. Unredacted contact
+    details give names and emails for social engineering.
+  how_detected: >
+    A WHOIS query to the registry, not the target. Fully passive.
+  how_to_verify: "whois example.com"
+  how_to_fix: >
+    Enable registrar privacy/proxy services, enable registrar lock, and
+    set auto-renew to prevent accidental expiry.
+  severity: info
+  references: ["RFC 3912", "RFC 9083"]
+  concept_tags: ["whois", "domain-registration", "osint"]
+
+WHO-002:
+  title: "Domain expires soon"
+  what: >
+    The registration expiry date is within 30 days.
+  why_it_matters: >
+    An expired domain can be registered by anyone. Whoever holds it
+    controls email, DNS and any service that trusts the domain -
+    including password resets sent to addresses at that domain.
+  how_detected: "Expiry field parsed from the WHOIS response."
+  how_to_verify: "whois example.com | grep -i expir"
+  how_to_fix: "Enable auto-renew and registrar lock; monitor expiry centrally."
+  severity: medium
+  references: ["CWE-350"]
+  concept_tags: ["whois", "domain-expiry", "takeover-risk"]

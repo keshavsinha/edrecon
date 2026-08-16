@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: "EDRecon: An Explainable Reconnaissance Framework for Security Education"
+message: "If you use this software in teaching or research, please cite it."
+type: software
+authors:
+  - family-names: Sinha
+    given-names: Keshav
+    name-prefix: Dr.
+    affiliation: "School of Computer Science, University of Petroleum and Energy Studies (UPES), Dehradun, India"
+repository-code: "https://github.com/keshavsinha/edrecon"
+url: "https://edcatalyst.in"
+abstract: >
+  EDRecon is a reconnaissance framework built for security education. Unlike
+  conventional scanners that emit bare observations, every finding carries a
+  structured explanation of what was observed, why it matters, how it was
+  detected, how to verify it manually, and how to remediate it. Explanatory
+  content is decoupled from scanner logic in an editable YAML knowledge base,
+  and authorisation is enforced structurally through a mandatory scope file
+  with no bypass.
+keywords:
+  - security education
+  - reconnaissance
+  - penetration testing
+  - explainable tooling
+  - ethical hacking
+license: MIT
+version: 1.0.0
+date-released: "2026-08-16"

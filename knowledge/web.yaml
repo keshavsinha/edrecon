@@ -1,0 +1,296 @@
+# EDRecon Knowledge Base - HTTP, headers and web surface
+
+HTTP-001:
+  title: "HTTP service responded"
+  what: >
+    The server returned an HTTP response, confirming a web service and
+    revealing its status code and response headers.
+  why_it_matters: >
+    The response is the entry point for all web testing. Status codes,
+    redirects and header set together indicate the technology stack,
+    whether a reverse proxy sits in front, and how the application
+    handles unknown requests.
+  how_detected: "A single HTTP GET request to the root path."
+  how_to_verify: "curl -I http://<target>/"
+  how_to_fix: "Not a weakness."
+  severity: info
+  references: ["RFC 9110"]
+  concept_tags: ["http-protocol", "status-codes"]
+
+HTTP-002:
+  title: "Server header discloses software and version"
+  what: >
+    The Server response header names the web server software, often with
+    its exact version number.
+  why_it_matters: >
+    Same principle as a service banner: a version string is a direct
+    lookup key into vulnerability databases. It also tells an attacker
+    which exploitation path is worth attempting first, saving them the
+    noisy trial-and-error that defenders are most likely to detect.
+  how_detected: "Read from the Server header of the HTTP response."
+  how_to_verify: "curl -sI http://<target>/ | grep -i '^server:'"
+  how_to_fix: >
+    Apache: ServerTokens Prod and ServerSignature Off.
+    nginx: server_tokens off;
+    Recognise this is obfuscation, not remediation - patch the software.
+  severity: low
+  references: ["CWE-200"]
+  concept_tags: ["information-disclosure", "version-disclosure", "fingerprinting"]
+
+HTTP-003:
+  title: "Technology stack disclosed via headers"
+  what: >
+    Headers such as X-Powered-By, X-AspNet-Version or X-Generator name
+    the application framework or runtime.
+  why_it_matters: >
+    Framework and version narrow the vulnerability search dramatically
+    and reveal which default paths, error pages and known misconfigurations
+    to probe next.
+  how_detected: "Response headers matched against a list of disclosure headers."
+  how_to_verify: "curl -sI http://<target>/"
+  how_to_fix: >
+    Remove these headers at the application or reverse proxy layer.
+    PHP: expose_php = Off. nginx: proxy_hide_header X-Powered-By;
+  severity: low
+  references: ["CWE-200"]
+  concept_tags: ["information-disclosure", "framework-fingerprinting"]
+
+HDR-001:
+  title: "Strict-Transport-Security header missing"
+  what: >
+    The server does not instruct browsers to use HTTPS exclusively for
+    future requests.
+  why_it_matters: >
+    Without HSTS, a user typing the bare hostname makes an initial plain
+    HTTP request. An attacker on the path can intercept that first
+    request and strip the redirect, keeping the session on HTTP
+    indefinitely - the classic SSL-stripping attack. HSTS closes the
+    window after the first successful visit.
+  how_detected: "Response headers checked for Strict-Transport-Security."
+  how_to_verify: "curl -sI https://<target>/ | grep -i strict-transport"
+  how_to_fix: >
+    Send: Strict-Transport-Security: max-age=31536000; includeSubDomains
+    Add preload only after confirming every subdomain supports HTTPS.
+  severity: medium
+  references: ["RFC 6797", "CWE-319"]
+  concept_tags: ["hsts", "ssl-stripping", "transport-security"]
+
+HDR-002:
+  title: "Content-Security-Policy header missing"
+  what: >
+    No policy restricts which sources the browser may load scripts,
+    styles or frames from.
+  why_it_matters: >
+    CSP is the main defence-in-depth control against cross-site
+    scripting. Without it, any successful injection executes with the
+    full privileges of the page. With a strict policy, many injections
+    are neutralised even when the underlying flaw exists.
+  how_detected: "Response headers checked for Content-Security-Policy."
+  how_to_verify: "curl -sI https://<target>/ | grep -i content-security"
+  how_to_fix: >
+    Start in report-only mode to find violations, then enforce.
+    Avoid unsafe-inline and unsafe-eval; prefer nonces or hashes.
+  severity: medium
+  references: ["CWE-1021", "OWASP A03:2021"]
+  concept_tags: ["csp", "xss-mitigation", "defence-in-depth"]
+
+HDR-003:
+  title: "X-Frame-Options / frame-ancestors missing"
+  what: >
+    Nothing prevents the page from being embedded in a frame on another
+    site.
+  why_it_matters: >
+    Enables clickjacking: the attacker overlays an invisible frame of
+    this site above their own interface, so a user who thinks they are
+    clicking a harmless button is actually actioning a request on this
+    application while fully authenticated.
+  how_detected: >
+    Checked for X-Frame-Options and for a frame-ancestors directive
+    inside any CSP header.
+  how_to_verify: "curl -sI https://<target>/ | grep -iE 'x-frame|frame-ancestors'"
+  how_to_fix: >
+    Prefer CSP frame-ancestors 'self'; retain X-Frame-Options: DENY for
+    older browsers.
+  severity: medium
+  references: ["RFC 7034", "CWE-1021"]
+  concept_tags: ["clickjacking", "framing-protection"]
+
+HDR-004:
+  title: "X-Content-Type-Options missing"
+  what: >
+    The browser is permitted to MIME-sniff responses rather than trusting
+    the declared Content-Type.
+  why_it_matters: >
+    An uploaded file served with a benign content type may still be
+    interpreted as script if the browser sniffs its contents, turning a
+    file upload feature into stored cross-site scripting.
+  how_detected: "Response headers checked for X-Content-Type-Options."
+  how_to_verify: "curl -sI https://<target>/ | grep -i x-content-type"
+  how_to_fix: "Send: X-Content-Type-Options: nosniff"
+  severity: low
+  references: ["CWE-430"]
+  concept_tags: ["mime-sniffing", "content-type"]
+
+HDR-005:
+  title: "Cookie set without Secure or HttpOnly flag"
+  what: >
+    A Set-Cookie header omitted the Secure flag, the HttpOnly flag, or
+    both.
+  why_it_matters: >
+    Without Secure, the cookie is transmitted over plain HTTP and can be
+    captured on the network path. Without HttpOnly, JavaScript can read
+    it - so any cross-site scripting flaw escalates directly into session
+    theft. For a session cookie this is the difference between an XSS
+    that defaces a page and one that takes over accounts.
+  how_detected: "Set-Cookie headers parsed and flag attributes checked."
+  how_to_verify: "curl -sI https://<target>/ | grep -i set-cookie"
+  how_to_fix: >
+    Set Secure, HttpOnly and SameSite=Lax or Strict on all session
+    cookies.
+  severity: medium
+  references: ["RFC 6265", "CWE-1004", "CWE-614"]
+  concept_tags: ["cookie-security", "session-hijacking", "xss-escalation"]
+
+HDR-006:
+  title: "Security headers correctly configured"
+  what: "The expected security header was present with a sound value."
+  why_it_matters: >
+    Worth recording explicitly. A report that only lists failures teaches
+    students what is broken but not what correct configuration looks
+    like.
+  how_detected: "Header present and value validated."
+  how_to_verify: "curl -sI https://<target>/"
+  how_to_fix: "No action required."
+  severity: info
+  references: ["OWASP Secure Headers Project"]
+  concept_tags: ["security-headers", "baseline-configuration"]
+
+WEB-001:
+  title: "HTTP does not redirect to HTTPS"
+  what: >
+    A plain HTTP request was served content directly instead of being
+    redirected to the encrypted equivalent.
+  why_it_matters: >
+    All traffic, including any credentials submitted, travels in
+    cleartext. Even if an HTTPS version exists, users and links that
+    reach the HTTP endpoint stay unencrypted.
+  how_detected: "HTTP request to port 80 returned 200 rather than a 301/302 to https://."
+  how_to_verify: "curl -sI http://<target>/"
+  how_to_fix: >
+    Return a 301 to the HTTPS URL for all HTTP requests, then add HSTS.
+  severity: medium
+  references: ["CWE-319"]
+  concept_tags: ["transport-security", "redirect", "cleartext"]
+
+WEB-002:
+  title: "Interesting path discovered"
+  what: >
+    A request to this path returned a response indicating the resource
+    exists.
+  why_it_matters: >
+    Administrative panels, backup files, version control directories and
+    configuration files are frequently reachable without authentication
+    because they were never intended to be requested directly. Content
+    discovery finds what is present but unlinked.
+  how_detected: >
+    Wordlist-driven requests, rate-limited, with the status code and
+    response length compared against a baseline for a path known not to
+    exist. That baseline is what distinguishes a real hit from a server
+    that returns 200 for everything.
+  how_to_verify: "curl -sI http://<target>/<path>"
+  how_to_fix: >
+    Remove files that should not be deployed, require authentication on
+    administrative paths, and block access to .git, .env and backup
+    extensions at the web server.
+  severity: medium
+  references: ["CWE-425", "CWE-548"]
+  concept_tags: ["content-discovery", "forced-browsing", "baseline-comparison"]
+
+WEB-003:
+  title: "Directory listing enabled"
+  what: >
+    The server returned an index of files in a directory instead of a
+    document or an error.
+  why_it_matters: >
+    Removes all guesswork from content discovery. Backups, source
+    archives and configuration files that would never be found by a
+    wordlist are simply listed.
+  how_detected: "Response body matched directory index signatures."
+  how_to_verify: "curl -s http://<target>/<path>/ | head"
+  how_to_fix: >
+    Apache: Options -Indexes. nginx: autoindex off;
+  severity: medium
+  references: ["CWE-548"]
+  concept_tags: ["directory-listing", "information-disclosure"]
+
+WEB-004:
+  title: "robots.txt discloses paths"
+  what: >
+    The robots.txt file lists paths the operator asked crawlers to avoid.
+  why_it_matters: >
+    A useful inversion: paths listed as disallowed are frequently the
+    ones the operator considers sensitive. The file is a public,
+    voluntarily-published hint list, and reading it sends one ordinary
+    request.
+  how_detected: "Fetched /robots.txt and parsed Disallow entries."
+  how_to_verify: "curl -s http://<target>/robots.txt"
+  how_to_fix: >
+    Never rely on robots.txt for security. Use authentication and
+    noindex headers; keep genuinely sensitive paths out of the file.
+  severity: low
+  references: ["CWE-200"]
+  concept_tags: ["robots-txt", "information-disclosure", "security-by-obscurity"]
+
+WEB-005:
+  title: "Web form discovered"
+  what: >
+    An HTML form with its method, action and input fields was found on
+    the page.
+  why_it_matters: >
+    Forms are where user input enters the application, making them the
+    starting point for input-validation testing. The absence of a
+    CSRF token field on a state-changing POST form is itself a finding.
+  how_detected: "Response HTML parsed for form elements and their inputs."
+  how_to_verify: "View page source and inspect the <form> element."
+  how_to_fix: >
+    Include anti-CSRF tokens on state-changing forms, validate all input
+    server-side, and mark password fields with the correct input type.
+  severity: info
+  references: ["CWE-352", "OWASP A01:2021"]
+  concept_tags: ["form-analysis", "csrf", "input-surface"]
+
+WEB-006:
+  title: "Password form submitted over HTTP"
+  what: >
+    A form containing a password input posts to a plain HTTP URL.
+  why_it_matters: >
+    Credentials are transmitted in cleartext and readable by anyone on
+    the network path. This is among the most direct credential-exposure
+    findings possible in a web assessment.
+  how_detected: >
+    Form inputs scanned for type=password, with the resolved action URL
+    scheme checked.
+  how_to_verify: "Inspect the form action attribute in page source."
+  how_to_fix: "Serve the page and its action target over HTTPS only, and add HSTS."
+  severity: high
+  references: ["CWE-319", "CWE-522"]
+  concept_tags: ["credential-exposure", "cleartext", "form-analysis"]
+
+WEB-007:
+  title: "Version control directory exposed"
+  what: >
+    A path such as /.git/ or /.svn/ is reachable over HTTP.
+  why_it_matters: >
+    An exposed repository often allows reconstruction of the entire
+    application source, including commit history. History is the real
+    prize: credentials and keys that were committed and later removed
+    remain recoverable from earlier commits.
+  how_detected: "Request to the version control path returned an existing resource."
+  how_to_verify: "curl -sI http://<target>/.git/HEAD"
+  how_to_fix: >
+    Deny access to dot-directories at the web server, and deploy build
+    artefacts rather than working copies. Rotate any credential that was
+    ever committed.
+  severity: high
+  references: ["CWE-527", "CWE-540"]
+  concept_tags: ["source-disclosure", "version-control", "secret-leakage"]
